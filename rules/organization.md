@@ -6,7 +6,7 @@
 ```textplain
 docs/
 ├── foo.md # 章节内容
-tutorials/
+assets/
 ├── foo/ # 章节文件夹，名称与章节名称一致
 |   ├── summary.md # 章节内容摘要
 │   ├── source # 章节对应的可运行代码
