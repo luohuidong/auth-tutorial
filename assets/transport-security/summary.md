@@ -1,0 +1,1 @@
+本章系统讲解 Web 应用传输安全的核心防御体系：深入解析 HTTPS/TLS 握手过程与前向保密原理；阐明 CORS 同源策略机制与预检请求配置；讲解 CSRF 攻击原理及 SameSite Cookie、CSRF Token 等防御方案；涵盖 XSS 三种类型（存储型、反射型、DOM 型）及输出编码、CSP、HttpOnly Cookie 等防御手段；详解 Cookie 安全属性（Secure、HttpOnly、SameSite）的正确配置；并介绍 HSTS、X-Content-Type-Options、Referrer-Policy 等关键安全响应头的集中配置实践。
