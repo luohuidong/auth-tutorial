@@ -1,0 +1,22 @@
+# 教程目录结构规则
+
+通过下面的目录结构，可以快速定位到对应章节的教程内容以及相关的其他内容：
+
+```textplain
+.
+├── assets
+│   └── auth-vs-authz # 章节文件夹，名称与章节名称一致，用于存放对应章节的相关内容
+│       ├── summary.md # 章节内容摘要，大概在200字左右
+│       └── code # 该目录存放章节对应的可执行示例代码
+├── docs
+│   ├── auth-vs-authz.md # 章节内容
+│   └── index.md # 教程大纲，包含模块划分和章节列表
+└── rules # 用于存放教程在编写时需要遵守的所有规则
+    ├── content-style-rules.md # markdown 内容风格要求
+    ├── global-rules.md # 教程全局规则
+    ├── outline-rules.md # 教程大纲规则
+    └── structure-rules.md # 教程目录结构规则
+```
+
+- 对应章节的教程，存放在根目录 `docs` 文件夹下。例如 `auth-vs-authz` 章节教程存放在 `docs/auth-vs-authz.md` 中。
+- 其他对应章节的相关内容，例如章节教程摘要、章节对应的可执行代码等，存放在 `assets` 文件夹下的对应章节文件夹中。例如 `auth-vs-authz` 章节的相关内容存放在 `assets/auth-vs-authz/` 文件夹下。
