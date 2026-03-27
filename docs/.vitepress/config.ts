@@ -5,6 +5,7 @@ import vitepressMermaidConfig from '@unify-js/vitepress-mermaid/config';
 export default defineConfig({
   extends: vitepressMermaidConfig,
   title: 'Auth Tutorial',
+  base: '/auth-tutorial/',
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [{ text: 'Home', link: '/' }],
