@@ -7,9 +7,6 @@ export default defineConfig({
   title: 'Auth Tutorial',
   base: '/auth-tutorial/',
   themeConfig: {
-    // https://vitepress.dev/reference/default-theme-config
-    nav: [{ text: 'Home', link: '/' }],
-
     outline: {
       level: [2, 4],
     },
@@ -20,15 +17,24 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: '认证 vs 授权', link: '/auth-vs-authz' },
-          { text: 'SSO 架构', link: '/sso-architecture' },
+          { text: 'SSO 与集中式认证服务', link: '/sso-architecture' },
           { text: '密码安全基础', link: '/password-security' },
           { text: '传输安全', link: '/transport-security' },
+        ],
+      },
+      {
+        text: '模块二：Session 认证基础',
+        collapsed: false,
+        items: [
+          { text: '用户模型设计', link: '/user-model' },
+          { text: 'Session 核心机制', link: '/session-mechanism' },
+          { text: '注册登录 API', link: '/register-login-api' },
         ],
       },
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/vuejs/vitepress' },
+      { icon: 'github', link: 'https://github.com/luohuidong/auth-tutorial' },
     ],
   },
 });
