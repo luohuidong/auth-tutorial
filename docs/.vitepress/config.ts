@@ -8,7 +8,7 @@ export default defineConfig({
   base: '/auth-tutorial/',
   themeConfig: {
     outline: {
-      level: [2, 4],
+      level: [2, 3],
     },
 
     sidebar: [
