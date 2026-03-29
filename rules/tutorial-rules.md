@@ -15,7 +15,7 @@
 
 ### 内容风格
 
-详见[内容风格要求](./content-style-rules.md)，包括图表、标题、列表、code block等的具体格式要求。
+详见[内容风格要求](./markdown-style-rules.md)，包括图表、标题、列表、code block等的具体格式要求。
 
 ### 结构模板
 
