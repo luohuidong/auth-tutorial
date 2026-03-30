@@ -15,7 +15,10 @@ export default defineConfig({
       {
         text: '概览',
         collapsed: false,
-        items: [{ text: '教程整体规划', link: '/tutorial-overview' }],
+        items: [
+          { text: '教程整体规划', link: '/tutorial-overview' },
+          { text: '教程大纲', link: '/tutorial-outline' },
+        ],
       },
       {
         text: '模块一：认证基础',
