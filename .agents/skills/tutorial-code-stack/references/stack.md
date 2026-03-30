@@ -4,7 +4,7 @@
   - pnpm
 - 后端
   - Nest.js 11
-  - TypeScript 5
+  - TypeScript 6
   - Drizzle ORM
   - Zod 4
   - PostgreSQL 18
