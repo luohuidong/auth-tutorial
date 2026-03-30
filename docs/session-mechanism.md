@@ -37,22 +37,22 @@
 ```mermaid
 sequenceDiagram
     participant B as 浏览器
-    participant S as 服务器（NestJS）
+    participant S as 服务器
     participant R as Redis
 
-    B->>S: POST /auth/login { email, password }
+    B->>S: POST /auth/login
     S->>S: 查询用户，验证密码哈希
-    S->>R: 创建 Session，存储 { userId: '123' }
-    R-->>S: Session ID = 'abc123xyz'
-    S-->>B: 200 OK<br/>Set-Cookie: sessionId=abc123xyz; HttpOnly; Secure
+    S->>R: 写入 Session
+    R-->>S: Session ID
+    S-->>B: 200 OK，下发 Set-Cookie
 
     Note over B,R: 登录完成，浏览器保存了 Cookie
 
-    B->>S: GET /api/profile<br/>Cookie: sessionId=abc123xyz
-    S->>R: 根据 'abc123xyz' 查询 Session
-    R-->>S: { userId: '123' }
+    B->>S: GET /api/profile，携带 Cookie
+    S->>R: 根据 Session ID 查询
+    R-->>S: userId
     S->>S: 根据 userId 查询用户信息
-    S-->>B: 200 OK { user: {...} }
+    S-->>B: 200 OK
 ```
 
 这个流程揭示了 Session 认证的三个核心组件：
