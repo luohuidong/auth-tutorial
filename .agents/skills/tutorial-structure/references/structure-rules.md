@@ -9,7 +9,8 @@
 │       └── code # 该目录存放章节对应的可执行示例代码
 ├── docs
 │   ├── auth-vs-authz.md # 章节内容
-│   └── index.md # 教程大纲，包含模块划分和章节列表
+│   ├── tutorial-overview # 教程概览
+│   └── tutorial-outline.md # 教程大纲，包含模块划分和章节列表
 └── rules # 该目录用于存放教程在编写时需要遵守的所有规则
 ```
 
