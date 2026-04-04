@@ -1,5 +1,5 @@
 ---
-name: tutorial-outline-rules
+name: tutorial-outline
 description: 当需要编辑教程大纲时，触发这个skill。
 ---
 
