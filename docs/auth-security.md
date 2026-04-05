@@ -45,10 +45,6 @@ graph TB
     E --> I["SameSite Cookie + CSRF Token"]
     F --> J["输入校验 + CSP + HttpOnly"]
 
-    style G fill:#e8f5e9,stroke:#2e7d32
-    style H fill:#e8f5e9,stroke:#2e7d32
-    style I fill:#e8f5e9,stroke:#2e7d32
-    style J fill:#e8f5e9,stroke:#2e7d32
 ```
 
 本篇逐一拆解这四类攻击，并给出在 NestJS + Session 架构下的具体实现。

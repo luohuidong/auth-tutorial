@@ -261,7 +261,6 @@ graph LR
     end
 
     A & B & C <-->|"读写 Session"| D
-    style D fill:#e53935,color:#fff
 ```
 
 #### Redis Session 的数据结构

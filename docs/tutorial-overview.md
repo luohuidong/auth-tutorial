@@ -86,9 +86,6 @@ flowchart TB
     IdP --> Redis
     BizServices -->|"验证 JWT\n获取公钥"| IdP
 
-    style IdP fill:#e1f5fe,stroke:#0288d1
-    style Gateway fill:#fff3e0,stroke:#f57c00
-    style Storage fill:#f3e5f5,stroke:#7b1fa2
 ```
 
 ## 各模块的学习路径

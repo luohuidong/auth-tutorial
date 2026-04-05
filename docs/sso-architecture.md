@@ -576,8 +576,6 @@ flowchart TB
     Biz --> BizDB
     User --> AuthDB
 
-    style Auth fill:#e1f5fe,stroke:#0288d1
-    style GW fill:#fff3e0,stroke:#f57c00
 ```
 
 **关键设计原则**：
@@ -614,9 +612,6 @@ flowchart TB
     SSO -->|"可以用...实现"| CAS
     OIDC -->|"构建在...之上"| OAuth
 
-    style SSO fill:#fff3e0
-    style OIDC fill:#e1f5fe
-    style OAuth fill:#e8f5e9
 ```
 
 ### IdP 服务挂了，所有应用都用不了吗？

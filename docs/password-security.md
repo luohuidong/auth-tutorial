@@ -222,11 +222,6 @@ flowchart LR
     P2 -->|"哈希"| H2["a7f21c..."]
     H2 -->|"归约"| P3["🔴 终点\nkqm019"]
 
-    style P1 fill:#c8e6c9,stroke:#388e3c
-    style P3 fill:#ffccbc,stroke:#e64a19
-    style H1 fill:#f5f5f5,stroke:#9e9e9e
-    style H2 fill:#f5f5f5,stroke:#9e9e9e
-    style P2 fill:#f5f5f5,stroke:#9e9e9e
 ```
 
 这条链经过了 3 个密码（abc123、djcfab、kqm019）和 2 个哈希值（d93591...、a7f21c...）。关键来了——**彩虹表只存储起点（abc123）和终点（kqm019），中间全部丢弃。**
@@ -533,9 +528,6 @@ flowchart TD
     I -->|"成功"| G
     I -->|"失败"| H
 
-    style D fill:#e8f5e9
-    style E fill:#e8f5e9
-    style F fill:#e8f5e9
 ```
 
 **代码实现（NestJS 服务示例）**

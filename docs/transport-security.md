@@ -123,8 +123,6 @@ flowchart TB
     Browser["浏览器"] -->|"使用内置根证书验证签名链"| Root
     Browser -->|"最终验证叶证书上的域名和有效期"| Leaf
 
-    style Root fill:#e8f5e9
-    style Browser fill:#e1f5fe
 ```
 
 浏览器内置了全球约 100 个根 CA 的公钥。验证过程：

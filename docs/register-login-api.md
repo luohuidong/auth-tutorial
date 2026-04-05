@@ -57,9 +57,6 @@ graph TB
         B --> C --> D
     end
 
-    style B fill:#e3f2fd,stroke:#1565c0
-    style C fill:#e8f5e9,stroke:#2e7d32
-    style D fill:#fff3e0,stroke:#e65100
 ```
 
 **Pipe 层（格式校验）**：
@@ -255,9 +252,6 @@ flowchart TD
     F -->|"成功"| G["自动登录（可选）\n创建 Session"]
     G --> H["201 Created\n返回用户信息"]
 
-    style E1 fill:#ffebee,stroke:#c62828
-    style E2 fill:#ffebee,stroke:#c62828
-    style H fill:#e8f5e9,stroke:#2e7d32
 ```
 
 ```typescript

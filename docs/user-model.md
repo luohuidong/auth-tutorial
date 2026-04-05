@@ -115,9 +115,6 @@ graph LR
     U -- "userId 关联" --> P
     P --> O
 
-    style U fill:#e3f2fd,stroke:#1565c0
-    style P fill:#f3e5f5,stroke:#6a1b9a
-    style O fill:#f3e5f5,stroke:#6a1b9a
 ```
 
 在本教程的 Session 认证阶段，我们的认证服务和业务系统是合并在同一个 NestJS 应用中的，但我们要在设计上保持清晰的边界意识：**哪些字段属于认证职责，哪些属于业务职责**。随着教程推进到模块四（OIDC 授权服务器），你会看到这种职责分离是如何在架构层面落地的。
@@ -656,10 +653,6 @@ graph TD
     B -->|"UserEntity 类型"| C
     C --> D
 
-    style A fill:#e8f5e9,stroke:#2e7d32
-    style B fill:#e8f5e9,stroke:#2e7d32
-    style C fill:#e8f5e9,stroke:#2e7d32
-    style D fill:#e3f2fd,stroke:#1565c0
 ```
 
 - **策略一** 是最根本的防御，阻断数据在内存中的存在

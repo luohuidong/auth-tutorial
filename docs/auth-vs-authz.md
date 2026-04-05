@@ -225,8 +225,6 @@ flowchart LR
     D -->|通过| F[访问资源]
     D -->|拒绝| G[返回403]
 
-    style B fill:#fff3e0
-    style D fill:#e8f5e9
 ```
 
 **关键理解**：
@@ -250,8 +248,6 @@ flowchart TB
         F --> G[决策：允许/拒绝]
     end
 
-    style AuthN fill:#e1f5fe
-    style AuthZ fill:#fff3e0
 ```
 
 ## 实际场景对比
@@ -512,8 +508,6 @@ flowchart TB
     BizService --> UserDB
     UserService --> UserDB
 
-    style AuthService fill:#e1f5fe
-    style AuthCheck fill:#fff3e0
 ```
 
 **架构要点**：
