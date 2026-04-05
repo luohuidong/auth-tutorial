@@ -3,6 +3,7 @@
 ## 图表
 
 - 图表优先使用 Mermaid 绘制，Mermaid 无法表达时使用 ASCII 图
+- 当使用 Mermaid 图时，使用默认的配色即可，因为要兼容 light mode 跟 dark mode 这两种模式的显示效果。
 
 ## 标题
 
