@@ -25,9 +25,13 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: '认证 vs 授权', link: '/auth-vs-authz' },
-          { text: 'SSO 与集中式认证服务', link: '/sso-architecture' },
           { text: '密码安全基础', link: '/password-security' },
           { text: '传输安全', link: '/transport-security' },
+          { text: 'SSO 与集中式认证服务', link: '/sso-architecture' },
+          {
+            text: 'Session 与 JWT：它们在 SSO 中各司什么职',
+            link: '/sso-session-vs-jwt',
+          },
         ],
       },
       {
