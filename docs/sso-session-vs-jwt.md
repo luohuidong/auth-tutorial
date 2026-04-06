@@ -37,7 +37,7 @@
 
 ## SSO 架构全景图
 
-下面这张图标注了 Session 和 JWT 在整个 SSO 体系中的实际位置。
+下面这张图标注了 Session 和 JWT 在整个 SSO 体系中的实际位置。**本图采用 BFF（Backend For Frontend）模式**：SPA 通过网关统一与 IdP 交换 Token，网关持有并管理 Token。另一种架构是业务应用直接与 IdP 交换 Token（如 sso-architecture.md 中的描述），两者的核心区别在于 Token 是否经由网关管理。
 
 ```mermaid
 sequenceDiagram
@@ -74,7 +74,7 @@ sequenceDiagram
 图中两条虚线将架构划分为三个区域：
 
 - **Session 区域（蓝色）**：IdP 内部的 SSO Session，存在 Redis 中，可撤销
-- **JWT 区域（橙色）**：Access Token 在网关与 SP 之间流转，无状态验证
+- **JWT 区域（橙色）**：Access Token 由 IdP 签发，Browser 携带访问网关/资源服务器，签名可本地验证（无需查库）
 - **SP Session 区域（绿色）**：业务服务本地的 Session，存储用户身份标识
 
 ## 核心区别：服务器存状态 vs 客户端带状态

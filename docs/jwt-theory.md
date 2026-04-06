@@ -150,7 +150,7 @@ Signature = SigningAlgorithm(
 
 1. 拼接 `base64url(Header) + "." + base64url(Payload)` 得到一个字符串
 2. 对这个字符串计算 SHA-256 哈希
-3. 用 RSA 私钥对哈希值进行加密，得到签名
+3. 用 RSA 私钥对哈希值进行签名，得到签名
 
 **验证时**，服务器用相同的算法（但使用公钥）重新计算，对比结果：
 

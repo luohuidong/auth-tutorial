@@ -170,10 +170,10 @@ Set-Cookie: sessionId=abc123; Domain=.app.com; Path=/
 
 **`Domain`**：控制哪些子域名可以接收这个 Cookie。
 
-- `Domain=app.com`（不带前导点）：只有 `app.com` 本身可以接收，子域名（如 `api.app.com`）不行
-- `Domain=.app.com`（带前导点）：`app.com` 及所有子域名（`api.app.com`、`auth.app.com`）都可以接收
+- `Domain=app.com`：浏览器会将 Cookie 发送给 `app.com` 及所有子域名（如 `api.app.com`、`auth.app.com`）
+- 设置 `Domain=app.com` 后，前端（`app.com`）和 API 服务（`api.app.com`）都可以接收同一个 Session Cookie
 
-如果你的前端在 `app.com`，API 在 `api.app.com`，需要设置 `Domain=.app.com` 让两个域都能接收 Session Cookie。
+> 注意：早期浏览器规范要求用前导点（`.app.com`）来包含子域名，但现代浏览器（Chrome、Firefox、Safari 等）已忽略前导点，`Domain=app.com` 即可正常工作。
 
 **`Path`**：控制哪些路径下的请求会携带这个 Cookie。
 

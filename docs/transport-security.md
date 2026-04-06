@@ -611,7 +611,7 @@ flowchart TB
 | `SameSite=Lax`    | Cookie 不随跨站 POST 请求发送，只随顶层导航（链接点击）发送 | 大多数情况的推荐值                    |
 | `SameSite=Strict` | Cookie 完全不随跨站请求发送                                 | 后台管理系统、高安全要求场景          |
 | `SameSite=None`   | Cookie 随所有跨站请求发送，必须同时设置 `Secure`            | 跨域嵌入场景，必须配合 `Secure`       |
-| `Domain`          | 指定 Cookie 的作用域名，`.example.com` 包含所有子域名       | 生产中明确指定，避免子域名泄露        |
+| `Domain`          | 指定 Cookie 的作用域名，`example.com` 包含所有子域名       | 生产中明确指定，现代浏览器忽略前导点 |
 | `Path`            | Cookie 只在指定路径下发送，默认 `/`                         | 精确控制时使用，如 `/api`             |
 | `MaxAge`          | Cookie 最大存活时间（秒），0 表示立即删除                   | 设置合理过期时间，避免永不过期        |
 | `Expires`         | Cookie 的绝对过期时间（UTC 日期字符串）                     | 推荐用 MaxAge，避免服务器客户端时间差 |
@@ -625,7 +625,7 @@ res.cookie('session_id', sessionId, {
   secure: true, // 仅 HTTPS
   sameSite: 'lax', // 防止 CSRF
   path: '/', // 全站生效
-  domain: '.example.com', // 主域和所有子域
+  domain: 'example.com', // 主域和所有子域（现代浏览器忽略前导点）
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 天（毫秒）
 });
 ```
