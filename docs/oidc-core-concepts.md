@@ -61,22 +61,31 @@ SP 的职责：
 - **浏览器**：只是用户与 Client、IdP 交互的媒介
 - **Client**：是 SP 的服务端代码，负责发起授权请求、处理 Token、维护 Session
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         用户浏览器                            │
-│  （用户的代理，负责在用户、Client、IdP 之间传递指令和重定向）  │
-└─────────────────────────────────────────────────────────────┘
-              ▲                                 ▲
-              │  授权请求、重定向                 │ 授权结果、重定向
-              │                                 │
-              ▼                                 ▼
-┌─────────────────────┐              ┌─────────────────────┐
-│   Client / SP       │              │   IdP               │
-│  （发起授权请求）    │              │  （验证身份、颁发Token）│
-│  - 验证 ID Token    │              │  - 管理用户账号       │
-│  - 建立本地 Session  │              │  - 管理 SSO Session  │
-│  - 处理业务逻辑      │              │  - 签名 ID Token     │
-└─────────────────────┘              └─────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Browser["用户浏览器"]
+        direction TB
+        BrowserDesc["用户的代理，负责在用户、Client、IdP 之间传递指令和重定向"]
+    end
+
+    BrowserDesc -->|授权请求、重定向| Client
+    BrowserDesc -->|授权结果、重定向| IdP
+
+    subgraph Client["Client / SP"]
+        direction TB
+        C1["发起授权请求"]
+        C2["验证 ID Token"]
+        C3["建立本地 Session"]
+        C4["处理业务逻辑"]
+    end
+
+    subgraph IdP["IdP"]
+        direction TB
+        I1["验证身份、颁发Token"]
+        I2["管理用户账号"]
+        I3["管理 SSO Session"]
+        I4["签名 ID Token"]
+    end
 ```
 
 ## 两种 Token：ID Token vs Access Token
@@ -195,20 +204,15 @@ SP 如何信任 IdP 颁发的 Token？答案是**数字签名**。
 3. **公钥分发**：SP 从 IdP 的 JWKS 端点获取公钥
 4. **签名验证**：SP 收到 Token 后，用公钥验证签名是否有效
 
-```
-IdP（持有私钥）                           SP（持有公钥）
-     │                                          │
-     │  1. 用私钥签名 Token                     │
-     ▼                                          │
-┌─────────┐                                    │
-│ Token   │                                    │
-│ (含签名) │───────────────────────────────────>>>│
-└─────────┘    2. 用公钥验证签名               │
-                                              ▼
-                                        ┌──────────┐
-                                        │ 验证通过 │
-                                        │ 信任用户 │
-                                        └──────────┘
+```mermaid
+sequenceDiagram
+    participant IdP as IdP（持有私钥）
+    participant Token as Token（含签名）
+    participant SP as SP（持有公钥）
+
+    IdP->>Token: 1. 用私钥签名 Token
+    Token-->>SP: 2. 用公钥验证签名
+    SP->>SP: 验证通过，信任用户
 ```
 
 ### JWKS 端点
@@ -240,35 +244,24 @@ SP 通过 `kid`（Key ID）找到对应的公钥进行验证。
 
 ## 架构总览图
 
-```
-┌────────────────────────────────────────────────────────────────────┐
-│                          用户浏览器                                 │
-│         （在用户、Client、IdP 之间传递指令和重定向）                  │
-└────────────────────────────────────────────────────────────────────┘
-           ▲                                         ▲
-           │ 1. 授权请求（带 redirect_uri, state）   │ 4. 带着 code 重定向
-           │                                         │
-           ▼                                         │
-┌───────────────────────┐              ┌──────────────────────────────┐
-│   Client / SP        │              │   IdP                        │
-│                       │              │                              │
-│  - 验证 ID Token     │              │  - 管理用户账号               │
-│  - 建立本地 Session   │              │  - 验证凭据                   │
-│  - 处理业务逻辑       │              │  - 签名并颁发 Token           │
-│                       │              │  - 管理 SSO Session          │
-└───────────────────────┘              └──────────────────────────────┘
-           ▲                                         ▲
-           │ 3. 用 code + client_secret 换 Token    │ 2. 登录页（用户在 IdP 输入密码）
-           │      （Back-channel，服务器到服务器）     │
-           │                                         │
-           └─────────────────────────────────────────┘
-                            │
-                            ▼
-              ┌─────────────────────────┐
-              │   /oauth/token 端点       │
-              │   颁发 ID Token +        │
-              │   Access Token           │
-              └─────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant Browser as 用户浏览器
+    participant Client as Client / SP
+    participant IdP as IdP
+    participant TokenEndpoint as /oauth/token 端点
+
+    Browser->>Client: 1. 授权请求（带 redirect_uri, state）
+    Client->>IdP: 授权请求重定向
+
+    IdP->>Browser: 2. 登录页（用户在 IdP 输入密码）
+    Browser->>IdP: 提交凭据
+
+    IdP->>Browser: 3. 带着 code 重定向
+    Browser->>Client: 回调（带 code）
+
+    Client->>TokenEndpoint: 4. 用 code + client_secret 换 Token
+    TokenEndpoint-->>Client: 颁发 ID Token + Access Token
 ```
 
 ## 本篇小结

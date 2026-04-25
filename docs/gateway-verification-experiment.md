@@ -121,14 +121,20 @@ npx tsx verify-token.ts
 
 传统 Session 验证需要查库：
 
-```
-请求 → Redis 查询 Session → 找到用户 → 通过
+```mermaid
+flowchart LR
+    A[请求] --> B[Redis 查询 Session]
+    B --> C[找到用户]
+    C --> D[通过]
 ```
 
 JWT 验证不需要查库：
 
-```
-请求 → 解码 Token → 用公钥验签 → 通过
+```mermaid
+flowchart LR
+    A[请求] --> B[解码 Token]
+    B --> C[用公钥验签]
+    C --> D[通过]
 ```
 
 **为什么可以无状态？**
