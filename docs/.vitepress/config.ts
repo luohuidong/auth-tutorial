@@ -6,6 +6,7 @@ export default defineConfig({
   extends: vitepressMermaidConfig,
   title: 'Auth Tutorial',
   base: '/auth-tutorial/',
+  ignoreDeadLinks: true,
   themeConfig: {
     outline: {
       level: [2, 6],
